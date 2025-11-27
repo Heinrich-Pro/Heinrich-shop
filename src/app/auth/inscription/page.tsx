@@ -44,6 +44,7 @@ export default function RegisterPage() {
 
     try {
       // Créer le compte utilisateur
+      // Le profil sera créé automatiquement par le trigger DB
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -57,19 +58,8 @@ export default function RegisterPage() {
       if (signUpError) throw signUpError;
 
       if (data.user) {
-        // Créer le profil utilisateur dans la table public.users
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert([
-            {
-              id: data.user.id,
-              email: data.user.email!,
-              name,
-              role: 'customer',
-            },
-          ]);
-
-        if (profileError) throw profileError;
+        // Profile created automatically by database trigger
+        // No need to manually insert into users table
 
         // Rediriger vers le compte
         router.push('/compte');
