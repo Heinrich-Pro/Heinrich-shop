@@ -49,6 +49,11 @@ export default function ProfilePage() {
     
     if (profile) {
       setName(profile.name || '');
+      setPhone(profile.phone || '');
+      if (profile.preferences) {
+        setEmailNotifications(profile.preferences.email_notifications ?? true);
+        setSmsNotifications(profile.preferences.sms_notifications ?? false);
+      }
     }
   };
 
@@ -63,7 +68,14 @@ export default function ProfilePage() {
       // Update profile in users table
       const { error: profileError } = await supabase
         .from('users')
-        .update({ name })
+        .update({ 
+          name,
+          phone,
+          preferences: {
+            email_notifications: emailNotifications,
+            sms_notifications: smsNotifications
+          }
+        })
         .eq('id', user.id);
 
       if (profileError) throw profileError;
@@ -269,18 +281,18 @@ export default function ProfilePage() {
             </div>
 
             {/* Danger Zone */}
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-              <h2 className="text-xl font-bold text-red-900 mb-4">Zone de danger</h2>
-              <p className="text-sm text-red-700 mb-4">
-                La suppression de votre compte est irréversible. Toutes vos données seront définitivement supprimées.
-              </p>
-              <button
-                onClick={handleDeleteAccount}
-                className="px-6 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700"
-              >
-                Supprimer mon compte
-              </button>
-            </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-2">
+                    Téléphone
+                  </label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+                    placeholder="+33 6 12 34 56 78"
+                  />
+                </div>
           </div>
         </div>
       </div>

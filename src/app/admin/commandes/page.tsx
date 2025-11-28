@@ -31,7 +31,7 @@ export default function AdminOrdersPage() {
       .from('users')
       .select('role')
       .eq('id', user.id)
-      .single();
+      .single() as { data: { role: string } | null };
 
     if (profile?.role !== 'admin') {
       router.push('/');
@@ -68,6 +68,7 @@ export default function AdminOrdersPage() {
   };
 
   const handleStatusChange = async (orderId: string, newStatus: string) => {
+    // @ts-ignore - Supabase typing issue with dynamic status update
     const { error } = await supabase
       .from('orders')
       .update({ status: newStatus })

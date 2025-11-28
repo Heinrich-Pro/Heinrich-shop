@@ -30,7 +30,7 @@ export default function AdminProductsPage() {
       .from('users')
       .select('role')
       .eq('id', user.id)
-      .single();
+      .single() as { data: { role: string } | null };
 
     if (profile?.role !== 'admin') {
       router.push('/');
