@@ -6,6 +6,11 @@ export async function middleware(request: NextRequest) {
   // Rafraîchir la session utilisateur
   const response = await updateSession(request)
 
+  // Allow access to admin login page without authentication
+  if (request.nextUrl.pathname === '/admin/login') {
+    return response
+  }
+
   // Routes protégées qui nécessitent une authentification
   const protectedRoutes = ['/compte', '/admin']
   const isProtectedRoute = protectedRoutes.some(route => 
@@ -27,17 +32,42 @@ export async function middleware(request: NextRequest) {
     )
 
     if (!supabaseResponse.ok) {
-      // Rediriger vers la page de connexion si non authentifié
-      return NextResponse.redirect(new URL('/auth/connexion', request.url))
+      // Rediriger vers la page de connexion appropriée
+      const loginUrl = request.nextUrl.pathname.startsWith('/admin')
+        ? '/admin/login'
+        : '/auth/connexion'
+      return NextResponse.redirect(new URL(loginUrl, request.url))
     }
 
     // Pour les routes admin, vérifier le rôle
     if (request.nextUrl.pathname.startsWith('/admin')) {
       try {
         const userData = await supabaseResponse.json()
-        // Implémenter la vérification du rôle admin ici si nécessaire
+        
+        // Vérifier le role dans la table users
+        const userCheckResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/users?id=eq.${userData.id}&select=role`,
+          {
+            headers: {
+              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+              Authorization: request.cookies.get('sb-access-token')?.value 
+                ? `Bearer ${request.cookies.get('sb-access-token')?.value}` 
+                : '',
+            },
+          }
+        )
+
+        if (userCheckResponse.ok) {
+          const profiles = await userCheckResponse.json()
+          if (profiles.length === 0 || profiles[0].role !== 'admin') {
+            // Pas admin, rediriger vers le login admin avec message
+            return NextResponse.redirect(new URL('/admin/login', request.url))
+          }
+        } else {
+          return NextResponse.redirect(new URL('/admin/login', request.url))
+        }
       } catch (error) {
-        return NextResponse.redirect(new URL('/auth/connexion', request.url))
+        return NextResponse.redirect(new URL('/admin/login', request.url))
       }
     }
   }

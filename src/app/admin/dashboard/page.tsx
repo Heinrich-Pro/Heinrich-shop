@@ -38,7 +38,7 @@ export default function AdminDashboard() {
   const checkAdmin = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      router.push('/auth/connexion');
+      router.push('/admin/login');
       return;
     }
 
@@ -50,7 +50,8 @@ export default function AdminDashboard() {
       .single();
 
     if (profile?.role !== 'admin') {
-      router.push('/');
+      await supabase.auth.signOut();
+      router.push('/admin/login');
       return;
     }
   };
