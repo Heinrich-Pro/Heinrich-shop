@@ -12,9 +12,9 @@ const config: Config = {
         background: "var(--background)",
         foreground: "var(--foreground)",
         primary: {
-          50: '#fff5f0',
-          100: '#ffe6d9',
-          200: '#ffd1b3',
+          50: '#100d0bff',
+          100: '#1d1613ff',
+          200: '#221d19ff',
           300: '#ffb380',
           400: '#ff944d',
           500: '#FF6A00',

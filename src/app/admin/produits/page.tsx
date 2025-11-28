@@ -1,126 +1,282 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Plus, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
-import { products } from '@/lib/data';
+import { Package, Plus, Edit2, Trash2, Search, Eye, EyeOff } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { toast, Toaster } from 'sonner';
 
 export default function AdminProductsPage() {
+  const router = useRouter();
+  const supabase = createClient();
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    checkAdmin();
+    loadProducts();
+  }, []);
+
+  const checkAdmin = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      router.push('/auth/connexion');
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      router.push('/');
+    }
+  };
+
+  const loadProducts = async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*, categories(name)')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      toast.error('Erreur lors du chargement des produits');
+    } else {
+      setProducts(data || []);
+    }
+
+    setLoading(false);
+  };
+
+  const handleToggleActive = async (id: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_active: !currentStatus })
+      .eq('id', id);
+
+    if (error) {
+      toast.error('Erreur lors de la mise à jour');
+    } else {
+      toast.success(currentStatus ? 'Produit désactivé' : 'Produit activé');
+      loadProducts();
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer "${name}" ?`)) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      toast.error('Erreur lors de la suppression');
+    } else {
+      toast.success('Produit supprimé');
+      loadProducts();
+    }
+  };
+
+  const filteredProducts = products.filter(
+    (product) =>
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.sku.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-64"></div>
+          <div className="h-64 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Admin Header */}
-      <header className="bg-gray-900 text-white py-4 shadow-lg">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold">Gestion des Produits</h1>
-            <Link href="/admin/dashboard" className="text-sm hover:text-primary-400">← Retour au dashboard</Link>
+    <>
+      <Toaster position="top-right" richColors />
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <div className="bg-white border-b sticky top-0 z-10">
+          <div className="px-8 py-4">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold text-gray-900">Gestion des Produits</h1>
+              <nav className="flex items-center gap-4">
+                <Link href="/admin/dashboard" className="text-gray-600 hover:text-gray-900">
+                  Dashboard
+                </Link>
+                <Link href="/admin/produits" className="text-primary-600 font-semibold">
+                  Produits
+                </Link>
+                <Link href="/admin/commandes" className="text-gray-600 hover:text-gray-900">
+                  Commandes
+                </Link>
+              </nav>
+            </div>
           </div>
         </div>
-      </header>
 
-      <div className="container mx-auto px-4 py-8">
-        {/* Actions Bar */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <input
-              type="text"
-              placeholder="Rechercher un produit..."
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500 w-64"
-            />
-            <select className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500">
-              <option>Toutes les catégories</option>
-              <option>Électronique</option>
-              <option>Mode</option>
-              <option>Maison</option>
-            </select>
+        <div className="p-8">
+          {/* Actions Bar */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex-1 max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Rechercher par nom ou SKU..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
+                />
+              </div>
+            </div>
+            <Link
+              href="/admin/produits/nouveau"
+              className="flex items-center gap-2 px-6 py-2 bg-primary-500 text-white rounded-lg font-semibold hover:bg-primary-600"
+            >
+              <Plus className="w-5 h-5" />
+              Nouveau produit
+            </Link>
           </div>
-          <Link
-            href="/admin/produits/nouveau"
-            className="inline-flex items-center gap-2 bg-primary-500 text-white px-6 py-2 rounded-lg font-semibold hover:bg-primary-600"
-          >
-            <Plus className="w-5 h-5" />
-            Nouveau produit
-          </Link>
-        </div>
 
-        {/* Products Table */}
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-900">Produit</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-900">SKU</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-900">Prix</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-900">Stock</th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-900">Statut</th>
-                <th className="text-right py-4 px-6 text-sm font-semibold text-gray-900">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {products.map((product) => (
-                <tr key={product.id} className="hover:bg-gray-50">
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-3">
-                      <div className="relative w-12 h-12 rounded overflow-hidden bg-gray-100 flex-shrink-0">
-                        <Image
-                          src={product.images[0]}
-                          alt={product.name}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{product.name}</p>
-                        <p className="text-sm text-gray-600">{product.category}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-600 font-mono">{product.sku}</td>
-                  <td className="py-4 px-6 text-sm font-semibold text-gray-900">
-                    €{product.price.toFixed(2)}
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className={`text-sm font-semibold ${
-                      product.stock > 10 ? 'text-green-600' :
-                      product.stock > 0 ? 'text-yellow-600' : 'text-red-600'
-                    }`}>
-                      {product.stock} unités
-                    </span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
-                      <Eye className="w-3 h-3" />
-                      Publié
-                    </span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <div className="flex items-center justify-end gap-2">
-                      <button className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="Modifier">
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button className="p-2 text-gray-600 hover:bg-gray-100 rounded" title="Dépublier">
-                        <EyeOff className="w-4 h-4" />
-                      </button>
-                      <button className="p-2 text-red-600 hover:bg-red-50 rounded" title="Supprimer">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          {/* Products Table */}
+          <div className="bg-white rounded-lg border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Produit
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      SKU
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Catégorie
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Prix
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Stock
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                      Statut
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredProducts.length > 0 ? (
+                    filteredProducts.map((product) => (
+                      <tr key={product.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-gray-100 rounded flex-shrink-0">
+                              {product.images?.[0] && (
+                                <img
+                                  src={product.images[0]}
+                                  alt={product.name}
+                                  className="w-full h-full object-cover rounded"
+                                />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{product.name}</p>
+                              <p className="text-sm text-gray-600 truncate max-w-xs">
+                                {product.description?.substring(0, 60)}...
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-gray-600">{product.sku}</td>
+                        <td className="px-6 py-4 text-gray-600">
+                          {product.categories?.name || '-'}
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-gray-900">
+                          €{product.price.toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                              product.stock === 0
+                                ? 'bg-red-100 text-red-700'
+                                : product.stock < 10
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-green-100 text-green-700'
+                            }`}
+                          >
+                            {product.stock}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={() => handleToggleActive(product.id, product.is_active)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${
+                              product.is_active
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {product.is_active ? (
+                              <>
+                                <Eye className="w-3 h-3" /> Actif
+                              </>
+                            ) : (
+                              <>
+                                <EyeOff className="w-3 h-3" /> Inactif
+                              </>
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-end gap-2">
+                            <Link
+                              href={`/admin/produits/${product.id}/edit`}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Link>
+                            <button
+                              onClick={() => handleDelete(product.id, product.name)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-gray-600">
+                        {searchQuery ? 'Aucun produit trouvé' : 'Aucun produit'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-        {/* Pagination */}
-        <div className="mt-6 flex items-center justify-between">
-          <p className="text-sm text-gray-600">{products.length} produits trouvés</p>
-          <div className="flex items-center gap-2">
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Précédent</button>
-            <button className="px-4 py-2 bg-primary-500 text-white rounded-lg">1</button>
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">2</button>
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Suivant</button>
+          {/* Summary */}
+          <div className="mt-4 text-sm text-gray-600">
+            {filteredProducts.length} produit(s) affiché(s)
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

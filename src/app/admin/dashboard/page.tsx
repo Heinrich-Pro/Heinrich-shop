@@ -1,132 +1,325 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Package, Users, DollarSign, TrendingUp, ShoppingBag, UserCircle } from 'lucide-react';
+import {
+  ShoppingBag,
+  Package,
+  Users,
+  TrendingUp,
+  DollarSign,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+} from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
-export default function AdminDashboardPage() {
-  const stats = [
-    { label: 'Chiffre d\'affaires', value: '€12,542', icon: DollarSign, change: '+12%', color: 'text-green-600' },
-    { label: 'Commandes', value: '143', icon: ShoppingBag, change: '+8%', color: 'text-blue-600' },
-    { label: 'Produits', value: '256', icon: Package, change: '+3', color: 'text-purple-600' },
-    { label: 'Clients', value: '1,234', icon: Users, change: '+24', color: 'text-orange-600' },
-  ];
+export default function AdminDashboard() {
+  const router = useRouter();
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalOrders: 0,
+    pendingOrders: 0,
+    totalRevenue: 0,
+    totalCustomers: 0,
+    totalProducts: 0,
+    lowStock: 0,
+  });
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
 
-  const recentOrders = [
-    { id: 'CMD-143', customer: 'Jean Dupont', date: '2024-01-27', status: 'pending', total: 89.99 },
-    { id: 'CMD-142', customer: 'Marie Martin', date: '2024-01-27', status: 'paid', total: 156.50 },
-    { id: 'CMD-141', customer: 'Pierre Durand', date: '2024-01-26', status: 'shipped', total: 234.00 },
-  ];
+  useEffect(() => {
+    checkAdmin();
+    loadStats();
+    loadRecentOrders();
+  }, []);
+
+  const checkAdmin = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      router.push('/admin/login');
+      return;
+    }
+
+    // Check if user is admin
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      await supabase.auth.signOut();
+      router.push('/admin/login');
+      return;
+    }
+  };
+
+  const loadStats = async () => {
+    // Total Orders
+    const { count: ordersCount } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true });
+
+    // Pending Orders
+    const { count: pendingCount } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['pending', 'paid']);
+
+    // Total Revenue
+    const { data: orders } = await supabase
+      .from('orders')
+      .select('total_amount')
+      .eq('status', 'delivered');
+
+    const revenue = orders?.reduce((sum, order) => sum + order.total_amount, 0) || 0;
+
+    // Total Customers
+    const { count: customersCount } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('role', 'customer');
+
+    // Total Products
+    const { count: productsCount } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true });
+
+    // Low Stock (< 10)
+    const { count: lowStockCount } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .lt('stock', 10)
+      .eq('is_active', true);
+
+    setStats({
+      totalOrders: ordersCount || 0,
+      pendingOrders: pendingCount || 0,
+      totalRevenue: revenue,
+      totalCustomers: customersCount || 0,
+      totalProducts: productsCount || 0,
+      lowStock: lowStockCount || 0,
+    });
+
+    setLoading(false);
+  };
+
+  const loadRecentOrders = async () => {
+    const { data } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        users (name, email)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    setRecentOrders(data || []);
+  };
+
+  const getStatusBadge = (status: string) => {
+    const styles = {
+      pending: 'bg-yellow-100 text-yellow-700',
+      paid: 'bg-blue-100 text-blue-700',
+      processing: 'bg-purple-100 text-purple-700',
+      shipped: 'bg-indigo-100 text-indigo-700',
+      delivered: 'bg-green-100 text-green-700',
+      canceled: 'bg-red-100 text-red-700',
+    };
+
+    const labels = {
+      pending: 'En attente',
+      paid: 'Payée',
+      processing: 'En préparation',
+      shipped: 'Expédiée',
+      delivered: 'Livrée',
+      canceled: 'Annulée',
+    };
+
+    return (
+      <span className={`text-xs px-2 py-1 rounded-full ${styles[status as keyof typeof styles]}`}>
+        {labels[status as keyof typeof labels]}
+      </span>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-64"></div>
+          <div className="grid grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-32 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Admin Header */}
-      <header className="bg-gray-900 text-white py-4 shadow-lg">
-        <div className="container mx-auto px-4">
+      {/* Header */}
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold">Heinrich Shop Admin</h1>
-              <nav className="hidden md:flex items-center gap-6 ml-8">
-                <Link href="/admin/dashboard" className="hover:text-primary-400">Dashboard</Link>
-                <Link href="/admin/produits" className="hover:text-primary-400">Produits</Link>
-                <Link href="/admin/commandes" className="hover:text-primary-400">Commandes</Link>
-                <Link href="/admin/clients" className="hover:text-primary-400">Clients</Link>
-              </nav>
-            </div>
-            <div className="flex items-center gap-4">
-              <Link href="/" className="text-sm hover:text-primary-400">← Retour au site</Link>
-              <UserCircle className="w-8 h-8" />
-            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard Admin</h1>
+            <nav className="flex items-center gap-4">
+              <Link
+                href="/admin/dashboard"
+                className="text-primary-600 font-semibold"
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/admin/produits"
+                className="text-gray-600 hover:text-gray-900"
+              >
+                Produits
+              </Link>
+              <Link
+                href="/admin/commandes"
+                className="text-gray-600 hover:text-gray-900"
+              >
+                Commandes
+              </Link>
+              <Link href="/" className="text-gray-600 hover:text-gray-900">
+                Retour au site
+              </Link>
+            </nav>
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="p-8">
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => (
-            <div key={index} className="bg-white rounded-lg border p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className={`w-12 h-12 rounded-lg bg-gray-50 flex items-center justify-center ${stat.color}`}>
-                  <stat.icon className="w-6 h-6" />
-                </div>
-                <span className="text-sm font-semibold text-green-600 flex items-center gap-1">
-                  <TrendingUp className="w-4 h-4" />
-                  {stat.change}
-                </span>
+          {/* Total Revenue */}
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-green-600" />
               </div>
-              <p className="text-2xl font-bold text-gray-900 mb-1">{stat.value}</p>
-              <p className="text-sm text-gray-600">{stat.label}</p>
+              <TrendingUp className="w-5 h-5 text-green-600" />
             </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Recent Orders */}
-          <div className="lg:col-span-2 bg-white rounded-lg border">
-            <div className="p-6 border-b">
-              <h2 className="text-lg font-bold text-gray-900">Commandes récentes</h2>
-            </div>
-            < div className="p-6">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 text-sm font-semibold text-gray-900">Commande</th>
-                      <th className="text-left py-3 text-sm font-semibold text-gray-900">Client</th>
-                      <th className="text-left py-3 text-sm font-semibold text-gray-900">Date</th>
-                      <th className="text-left py-3 text-sm font-semibold text-gray-900">Statut</th>
-                      <th className="text-right py-3 text-sm font-semibold text-gray-900">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentOrders.map((order) => (
-                      <tr key={order.id} className="border-b last:border-0">
-                        <td className="py-4 text-sm font-medium text-gray-900">{order.id}</td>
-                        <td className="py-4 text-sm text-gray-600">{order.customer}</td>
-                        <td className="py-4 text-sm text-gray-600">{order.date}</td>
-                        <td className="py-4">
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            order.status === 'paid' ? 'bg-green-100 text-green-700' :
-                            order.status === 'shipped' ? 'bg-blue-100 text-blue-700' :
-                            'bg-yellow-100 text-yellow-700'
-                          }`}>
-                            {order.status === 'paid' ? 'Payée' :
-                             order.status === 'shipped' ? 'Expédiée' : 'En attente'}
-                          </span>
-                        </td>
-                        <td className="py-4 text-sm font-semibold text-gray-900 text-right">
-                          €{order.total.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <h3 className="text-gray-600 text-sm font-medium mb-1">Chiffre d'affaires</h3>
+            <p className="text-3xl font-bold text-gray-900">€{stats.totalRevenue.toFixed(2)}</p>
+            <p className="text-sm text-gray-600 mt-2">Commandes livrées</p>
           </div>
 
-          {/* Quick Actions */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white rounded-lg border p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Actions rapides</h3>
-              <div className="space-y-3">
-                <Link href="/admin/produits/nouveau" className="block w-full bg-primary-500 text-white text-center py-2 rounded-lg font-semibold hover:bg-primary-600">
-                  + Nouveau produit
-                </Link>
-                <Link href="/admin/commandes" className="block w-full border-2 border-gray-300 text-gray-700 text-center py-2 rounded-lg font-semibold hover:bg-gray-50">
-                  Gérer les commandes
-                </Link>
-                <Link href="/admin/clients" className="block w-full border-2 border-gray-300 text-gray-700 text-center py-2 rounded-lg font-semibold hover:bg-gray-50">
-                  Voir les clients
-                </Link>
+          {/* Total Orders */}
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <ShoppingBag className="w-6 h-6 text-blue-600" />
+              </div>
+              {stats.pendingOrders > 0 && (
+                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full font-semibold">
+                  {stats.pendingOrders} en attente
+                </span>
+              )}
+            </div>
+            <h3 className="text-gray-600 text-sm font-medium mb-1">Total Commandes</h3>
+            <p className="text-3xl font-bold text-gray-900">{stats.totalOrders}</p>
+            <Link
+              href="/admin/commandes"
+              className="text-sm text-primary-600 hover:text-primary-700 mt-2 inline-block"
+            >
+              Gérer →
+            </Link>
+          </div>
+
+          {/* Total Products */}
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                <Package className="w-6 h-6 text-purple-600" />
+              </div>
+              {stats.lowStock > 0 && (
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              )}
+            </div>
+            <h3 className="text-gray-600 text-sm font-medium mb-1">Produits</h3>
+            <p className="text-3xl font-bold text-gray-900">{stats.totalProducts}</p>
+            {stats.lowStock > 0 && (
+              <p className="text-sm text-red-600 mt-2">{stats.lowStock} stock faible</p>
+            )}
+          </div>
+
+          {/* Total Customers */}
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                <Users className="w-6 h-6 text-orange-600" />
               </div>
             </div>
+            <h3 className="text-gray-600 text-sm font-medium mb-1">Clients</h3>
+            <p className="text-3xl font-bold text-gray-900">{stats.totalCustomers}</p>
+          </div>
+        </div>
 
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-              <h4 className="font-semibold text-yellow-900 mb-2">⚠️ Alertes</h4>
-              <ul className="text-sm text-yellow-800 space-y-1">
-                <li>• 3 produits en rupture de stock</li>
-                <li>• 5 commandes en attente</li>
-              </ul>
+        {/* Recent Orders */}
+        <div className="bg-white rounded-lg border">
+          <div className="p-6 border-b">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Commandes récentes</h2>
+              <Link
+                href="/admin/commandes"
+                className="text-primary-600 hover:text-primary-700 text-sm font-semibold"
+              >
+                Voir toutes
+              </Link>
             </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                    Numéro
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                    Client
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                    Date
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                    Total
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                    Statut
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {recentOrders.map((order) => (
+                  <tr key={order.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <Link
+                        href={`/admin/commandes/${order.id}`}
+                        className="font-medium text-primary-600 hover:text-primary-700"
+                      >
+                        {order.order_number}
+                      </Link>
+                    </td>
+                    <td className="px-6 py-4 text-gray-900">
+                      {order.users?.name || order.users?.email || 'Invité'}
+                    </td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {new Date(order.created_at).toLocaleDateString('fr-FR')}
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-gray-900">
+                      €{order.total_amount.toFixed(2)}
+                    </td>
+                    <td className="px-6 py-4">{getStatusBadge(order.status)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
